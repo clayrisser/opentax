@@ -4,9 +4,13 @@
 patches to the 2025 Form 1040 graph, each of which is also open as a pull
 request upstream.
 
-`main` mirrors upstream and carries nothing of its own. Every patch sits on its
-own branch off the upstream commit it was written against, and `fix/all` is the
-six merged together. Build from `fix/all`.
+`main` CARRIES the six patches, as of 2026-09-16. A plain clone of this fork
+computes a correct TY2025 return with nothing applied by hand; upstream `main`
+does not. This is a soft fork, not upstream repackaged.
+
+Every patch also sits on its own branch off the upstream commit it was written
+against, because that is the shape the upstream pull requests need. `fix/all` is
+the six merged together and is what `main` took in.
 
 ## What this fork carries
 
@@ -126,3 +130,18 @@ involved.
 `NOTICE` reserves the right to apply for IRS MeF Software Developer or
 Transmitter authorization on this codebase to Filed Inc. and its OTTA partners.
 That reservation is independent of the license and applies to this fork too.
+
+## Three upstream test failures the fork does not cause
+
+`deno task test` on this fork reports 6118 passed, 3 failed. All three fail the
+same way on upstream `ae54e23`, before any patch here, verified 2026-09-16 by
+running the two files in a worktree at that commit:
+
+- `eitc` — `MFJ_vs_single_1_child` at $45,000
+- `form8889` — `total contributions capped at annual limit (self_only 4300)`
+- `form8889` — `employer fills entire limit`, where `schedule1` has no outputs
+  at all and the read of `line13_hsa_deduction` throws
+
+They are upstream's, not ours, and neither EITC nor an HSA appears in the return
+this fork was built for. `deno task bench` is 133 PASS, 0 FAIL, so no benchmark
+case regressed.
