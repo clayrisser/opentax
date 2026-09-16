@@ -28,16 +28,16 @@
     "fed_withheld": 32652.03
   },
   "correct": {
-    "line9_total_income": 189104.55,
-    "line11_agi": 189104.55,
+    "line9_total_income": 189104,
+    "line11_agi": 189104,
     "standard_deduction": 15750,
     "qbi_deduction": 0,
-    "line15_taxable_income": 173354.55,
-    "ordinary_taxable": 173354.55,
-    "income_tax": 34452.09,
+    "line15_taxable_income": 173354,
+    "ordinary_taxable": 173354,
+    "income_tax": 34452,
     "se_tax": 0,
     "add_medicare_tax": 0,
-    "line18_tax_before_credits": 34452.09,
+    "line18_tax_before_credits": 34452,
     "nonref_ctc": 0,
     "dependent_care_credit": 0,
     "aotc_nonref": 0,
@@ -47,9 +47,9 @@
     "eitc": 0,
     "actc": 0,
     "excess_ss_credit": 0,
-    "line24_total_tax": 34452.09,
-    "line33_total_payments": 32652.03,
+    "line24_total_tax": 34452,
+    "line33_total_payments": 32652,
     "line35a_refund": 0,
-    "line37_amount_owed": 1800.06
+    "line37_amount_owed": 1800
   }
 }

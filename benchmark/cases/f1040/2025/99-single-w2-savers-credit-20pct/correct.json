@@ -6,9 +6,9 @@
   "correct": {
     "line11_agi": 24000,
     "line15_taxable_income": 8250,
-    "line24_total_tax": 425,
+    "line24_total_tax": 428,
     "line33_total_payments": 1200,
-    "line35a_refund": 775,
+    "line35a_refund": 772,
     "line37_amount_owed": 0
   }
 }

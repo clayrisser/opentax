@@ -115,11 +115,18 @@ export const QDCGT_ZERO_CEILING_2025: Record<FilingStatus, number> = {
   [FilingStatus.QSS]:    96_700,
 } as const;
 
-/** Bottom of 20% LTCG/QD bracket (income above this → 20% rate). */
+/**
+ * Bottom of 20% LTCG/QD bracket (income above this → 20% rate).
+ *
+ * MFS is $300,000, not half of the MFJ figure. Rev. Proc. 2024-40 §3.02 rounds each
+ * status's maximum 15-percent rate amount on its own, and the Qualified Dividends and
+ * Capital Gain Tax Worksheet line 13 (2025) prints "$300,000 if married filing
+ * separately" next to "$600,050 if married filing jointly".
+ */
 export const QDCGT_TWENTY_FLOOR_2025: Record<FilingStatus, number> = {
   [FilingStatus.Single]: 533_400,
   [FilingStatus.MFJ]:    600_050,
-  [FilingStatus.MFS]:    300_025,
+  [FilingStatus.MFS]:    300_000,
   [FilingStatus.HOH]:    566_700,
   [FilingStatus.QSS]:    600_050,
 } as const;

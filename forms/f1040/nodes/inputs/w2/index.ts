@@ -218,18 +218,19 @@ function medicareOutput(w2s: W2Items): NodeOutput[] {
       item.box6_medicare_withheld !== undefined,
   );
   if (items.length === 0) return [];
-  // Use box1_wages for medicare_wages (the amount subject to Additional Medicare Tax
-  // threshold per benchmark reference calculator behavior).
-  const totalBox1Wages = items.reduce((sum, item) => sum + item.box1_wages, 0);
-  // Use box5_medicare_wages for line20 (regular Medicare isolation from total withheld).
-  const totalBox5Wages = items.reduce((sum, item) => sum + (item.box5_medicare_wages ?? 0), 0);
+  // Form 8959 line 1 — "Medicare wages and tips from Form W-2, box 5", totalled over
+  // every W-2. Box 1 is a different number whenever a deferral or a pre-tax benefit is
+  // treated differently for income tax than for Medicare, and Form 8959 never asks for
+  // it: line 1 feeds Part I, the line 10 threshold reduction and the line 20 regular
+  // Medicare subtraction alike. A W-2 with box 6 filled but box 5 left blank falls back
+  // to box 1, which is the closest thing the form has.
+  const totalMedicareWages = items.reduce(
+    (sum, item) => sum + (item.box5_medicare_wages ?? item.box1_wages),
+    0,
+  );
   const totalWithheld = items.reduce((sum, item) => sum + (item.box6_medicare_withheld ?? 0), 0);
   const fields: Partial<z.infer<typeof form8959["inputSchema"]>> = {};
-  if (totalBox1Wages > 0) fields.medicare_wages = totalBox1Wages;
-  // Only send box5 separately when it differs from box1 (avoids no-op field)
-  if (totalBox5Wages > 0 && totalBox5Wages !== totalBox1Wages) {
-    fields.medicare_wages_box5 = totalBox5Wages;
-  }
+  if (totalMedicareWages > 0) fields.medicare_wages = totalMedicareWages;
   if (totalWithheld > 0) fields.medicare_withheld = totalWithheld;
   if (Object.keys(fields).length === 0) return [];
   return [output(form8959, fields as AtLeastOne<z.infer<typeof form8959["inputSchema"]>>)];

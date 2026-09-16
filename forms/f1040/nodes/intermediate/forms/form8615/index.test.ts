@@ -73,60 +73,64 @@ Deno.test("NUI just above threshold ($2,601) — kiddie tax applies", () => {
 
 Deno.test("kiddie tax — MFJ parent, $5k NUI", () => {
   // Taxable NUI = $5,000 - $2,600 = $2,400
-  // Parent income $80,000 (MFJ, 12% bracket)
-  // Tax on $82,400 = $2,385 + ($82,400 - $23,850) × 12% = $2,385 + $7,026 = $9,411
-  // Parent tax on $80,000 = $2,385 + ($80,000 - $23,850) × 12% = $2,385 + $6,738 = $9,123
-  // Kiddie tax = $9,411 - $9,123 = $288
+  // Both lookups are Tax Table lookups (Form 8615 line 9 and the parent's own line 16).
+  // Tax on $82,400: band 82,400–82,450, midpoint $82,425
+  //   → $2,385 + ($82,425 − $23,850) × 12% = $9,414
+  // Parent tax on $80,000: band 80,000–80,050, midpoint $80,025
+  //   → $2,385 + ($80,025 − $23,850) × 12% = $9,126
+  // Kiddie tax = $9,414 - $9,126 = $288
   const result = compute({
     net_unearned_income: 5_000,
     parent_taxable_income: 80_000,
     parent_filing_status: FilingStatus.MFJ,
-    parent_tax: 9_123,
+    parent_tax: 9_126,
   });
   const s2 = findOutput(result, "schedule2");
-  assertAlmostEquals(s2?.fields.line17d_kiddie_tax as number, 288, 1);
+  assertEquals(s2?.fields.line17d_kiddie_tax as number, 288);
 });
 
 Deno.test("kiddie tax — Single parent, $10k NUI", () => {
   // Taxable NUI = $10,000 - $2,600 = $7,400
-  // Parent income $60,000 (Single, 22% bracket)
-  // Combined = $67,400; tax = $5,578.50 + ($67,400 - $48,475) × 22% = $5,578.50 + $4,163.50 = $9,742
-  // Parent tax on $60,000 = $5,578.50 + ($60,000 - $48,475) × 22% = $5,578.50 + $2,535.50 = $8,114
-  // Kiddie tax ≈ $9,742 - $8,114 = $1,628
+  // Tax on $67,400: band 67,400–67,450, midpoint $67,425
+  //   → $5,578.50 + ($67,425 − $48,475) × 22% = $9,747.50 → $9,748
+  // Parent tax on $60,000: band 60,000–60,050, midpoint $60,025
+  //   → $5,578.50 + ($60,025 − $48,475) × 22% = $8,119.50 → $8,120
+  // Kiddie tax = $9,748 - $8,120 = $1,628
   const result = compute({
     net_unearned_income: 10_000,
     parent_taxable_income: 60_000,
     parent_filing_status: FilingStatus.Single,
-    parent_tax: 8_114,
+    parent_tax: 8_120,
   });
   const s2 = findOutput(result, "schedule2");
-  assertAlmostEquals(s2?.fields.line17d_kiddie_tax as number, 1_628, 1);
+  assertEquals(s2?.fields.line17d_kiddie_tax as number, 1_628);
 });
 
 Deno.test("kiddie tax — MFS parent, $5k NUI exact value", () => {
   // Taxable NUI = $5,000 - $2,600 = $2,400
-  // Parent income $40,000 MFS (same brackets as single for this range)
-  // Tax on $42,400 MFS: base $1,192.50 + ($42,400 - $11,925) × 12% = $1,192.50 + $3,657 = $4,849.50
-  // Parent tax on $40,000: base $1,192.50 + ($40,000 - $11,925) × 12% = $1,192.50 + $3,369 = $4,561.50
-  // Kiddie tax = $4,849.50 - $4,561.50 = $288
+  // Tax on $42,400 MFS: band 42,400–42,450, midpoint $42,425
+  //   → $1,192.50 + ($42,425 − $11,925) × 12% = $4,852.50 → $4,853
+  // Parent tax on $40,000: band 40,000–40,050, midpoint $40,025
+  //   → $1,192.50 + ($40,025 − $11,925) × 12% = $4,564.50 → $4,565
+  // Kiddie tax = $4,853 - $4,565 = $288
   const result = compute({
     net_unearned_income: 5_000,
     parent_taxable_income: 40_000,
     parent_filing_status: FilingStatus.MFS,
-    parent_tax: 4_561.50,
+    parent_tax: 4_565,
   });
   const s2 = findOutput(result, "schedule2");
   assertEquals(s2?.nodeType, "schedule2");
-  assertAlmostEquals(s2?.fields.line17d_kiddie_tax as number, 288, 1);
+  assertEquals(s2?.fields.line17d_kiddie_tax as number, 288);
 });
 
 // ─── Edge Cases ───────────────────────────────────────────────────────────────
 
 Deno.test("zero parent income — tax computed from zero base", () => {
   // Parent income = 0; taxable NUI = $5,000 - $2,600 = $2,400
-  // Tax on $2,400 (MFJ, 10% bracket) = $240
-  // Parent tax = $0
-  // Kiddie tax = $240
+  // Tax on $2,400: band 2,400–2,425 ($25 wide below $3,000), midpoint $2,412.50
+  //   → $2,412.50 × 10% = $241.25 → $241
+  // Parent tax = $0, so kiddie tax = $241
   const result = compute({
     net_unearned_income: 5_000,
     parent_taxable_income: 0,
@@ -134,7 +138,7 @@ Deno.test("zero parent income — tax computed from zero base", () => {
     parent_tax: 0,
   });
   const s2 = findOutput(result, "schedule2");
-  assertAlmostEquals(s2?.fields.line17d_kiddie_tax as number, 240, 1);
+  assertEquals(s2?.fields.line17d_kiddie_tax as number, 241);
 });
 
 Deno.test("very large NUI — kiddie tax computed at high bracket", () => {
@@ -146,8 +150,10 @@ Deno.test("very large NUI — kiddie tax computed at high bracket", () => {
   //   $114,462 + ($597,400 - $501,050) × 35% = $114,462 + $33,722.50 = $148,184.50
   // Tax on $400,000 MFJ: over $394,600 at 32%
   //   $80,398 + ($400,000 - $394,600) × 32% = $80,398 + $1,728 = $82,126
-  // Kiddie tax = $148,184.50 - $82,126 = $66,058.50 → but actual reported 95847.5
-  // Supply parent_tax = $82,126 and pin to actual computed value
+  // $597,400 is over $100,000, so the Tax Computation Worksheet: Section B 35% row,
+  //   0.35 × $597,400 − $60,905.50 = $148,184.50 → $148,185
+  // Parent tax on $400,000, Section B 32% row: 0.32 × $400,000 − $45,874 = $82,126
+  // Kiddie tax = $148,185 - $82,126 = $66,059
   const result = compute({
     net_unearned_income: 200_000,
     parent_taxable_income: 400_000,
@@ -156,7 +162,7 @@ Deno.test("very large NUI — kiddie tax computed at high bracket", () => {
   });
   const s2 = findOutput(result, "schedule2");
   assertEquals(s2?.nodeType, "schedule2");
-  assertAlmostEquals(s2?.fields.line17d_kiddie_tax as number, 66_058, 10);
+  assertEquals(s2?.fields.line17d_kiddie_tax as number, 66_059);
 });
 
 // ─── Output Routing ───────────────────────────────────────────────────────────
@@ -166,9 +172,9 @@ Deno.test("output routes to schedule2 line17d_kiddie_tax", () => {
     net_unearned_income: 5_000,
     parent_taxable_income: 80_000,
     parent_filing_status: FilingStatus.MFJ,
-    parent_tax: 9_123,
+    parent_tax: 9_126,
   });
   const s2 = findOutput(result, "schedule2");
   assertEquals(s2?.nodeType, "schedule2");
-  assertAlmostEquals(s2?.fields.line17d_kiddie_tax as number, 288, 1);
+  assertEquals(s2?.fields.line17d_kiddie_tax as number, 288);
 });

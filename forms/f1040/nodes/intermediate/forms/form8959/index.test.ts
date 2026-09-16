@@ -281,9 +281,9 @@ Deno.test("smoke: all fields present → schedule2 AMT + f1040 withholding credi
   // Part II: se($50k), threshold reduced to max(0, $250k - $307k) = 0 → $50k × 0.009 = $450
   // Part III: rrta($260k) - $250k = $10k × 0.009 = $90
   // Total = $513 + $450 + $90 = $1,053
-  // Part V: line4 = $307k; line20 (regular) = $307k × 1.45% = $4,451.50
-  //         medicare_withheld (box 6) = $4,000 < $4,451.50 → line21 = 0
-  //         line22 (RRTA additional) = $200 → line24 = $200 → f1040 line25c
+  // Part V: line20 = line1 = $300k; line21 (regular) = $300k × 1.45% = $4,350
+  //         line19 (box 6) = $4,000 < $4,350 → line22 = 0
+  //         line23 (RRTA additional) = $200 → line24 = $200 → f1040 line25c
   const result = compute({
     filing_status: FilingStatus.MFJ,
     medicare_wages: 300_000,
@@ -296,4 +296,60 @@ Deno.test("smoke: all fields present → schedule2 AMT + f1040 withholding credi
   });
   assertEquals(fieldsOf(result.outputs, schedule2)!.line11_additional_medicare, 1_053);
   assertEquals(fieldsOf(result.outputs, f1040)!.line25c_additional_medicare_withheld, 200);
+});
+
+// ─── Box 5 is the only wage figure the form asks for ──────────────────────────
+//
+// Line 1 is "Medicare wages and tips from Form W-2, box 5". Line 10 is "Enter the amount
+// from line 4" and line 20 is "Enter the amount from line 1", so box 5 drives Part I,
+// the Part II threshold reduction and the Part V subtraction alike. Box 1 appears
+// nowhere on the form. These cases are the ones that tell the two apart: a filer whose
+// box 1 and box 5 differ AND who has self-employment income, which is where the line 10
+// reduction is the only thing that moves.
+
+Deno.test("part II: line 10 reduces the threshold by line 4, which is box 5", () => {
+  // Single, box 5 = $102,000 (box 1 was $102,200 — not an input here, and not on the form)
+  // line 4 = $102,000; line 9 = $200,000; line 11 = $98,000
+  // line 12 = $578,466 − $98,000 = $480,466; line 13 = × 0.9% = $4,324.194
+  const result = compute({
+    filing_status: FilingStatus.Single,
+    medicare_wages: 102_000,
+    se_income: 578_466,
+  });
+  assertEquals(
+    fieldsOf(result.outputs, schedule2)!.line11_additional_medicare,
+    4_324.19,
+  );
+});
+
+Deno.test("part II: $200 more of box 5 wages costs $1.80 of Additional Medicare Tax", () => {
+  // The same return with box 5 at $102,200 instead. Line 11 falls to $97,800, so $200
+  // more of SE income clears the threshold: 0.9% × $200 = $1.80.
+  const result = compute({
+    filing_status: FilingStatus.Single,
+    medicare_wages: 102_200,
+    se_income: 578_466,
+  });
+  assertEquals(
+    fieldsOf(result.outputs, schedule2)!.line11_additional_medicare,
+    4_325.99,
+  );
+});
+
+Deno.test("part V: line 20 is line 1, so tips and Form 8919 wages stay out of it", () => {
+  // Line 20 reads line 1, not line 4. Form 4137 tips and Form 8919 wages had no employer
+  // Medicare withholding behind them, so counting them here would subtract withholding
+  // that never happened and wipe out a real line 25c credit.
+  // line 20 = $100,000; line 21 = $1,450; line 19 = $2,000 → line 22 = $550
+  const result = compute({
+    filing_status: FilingStatus.Single,
+    medicare_wages: 100_000,
+    unreported_tips: 20_000,
+    wages_8919: 10_000,
+    medicare_withheld: 2_000,
+  });
+  assertEquals(
+    fieldsOf(result.outputs, f1040)!.line25c_additional_medicare_withheld,
+    550,
+  );
 });

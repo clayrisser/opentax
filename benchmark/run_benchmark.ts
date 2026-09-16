@@ -112,16 +112,21 @@ async function runCase(name: string): Promise<CaseResult | null> {
   const engOwe = scalar(sm.line37_amount_owed ?? 0);
 
   const c   = correct.correct ?? correct;
-  const ok  = Math.abs(engTax - c.line24_total_tax)    <= 5 &&
-              Math.abs(engRef - c.line35a_refund)       <= 5 &&
-              Math.abs(engOwe - c.line37_amount_owed)   <= 5;
+  // Exact, to the dollar. A tolerance is a place for a defect to hide: the $5 one this
+  // harness used to carry could not see a $3 Tax Table error, which is how one sat here
+  // undetected across 133 cases. Every figure on both sides is a whole-dollar entry, so
+  // there is nothing left for a tolerance to absorb. If a case cannot reach zero, leave
+  // it failing and say why — do not widen this back.
+  const ok  = engTax === c.line24_total_tax &&
+              engRef === c.line35a_refund &&
+              engOwe === c.line37_amount_owed;
 
   return { name, engAgi, engTi, engTax, engPay, engRef, engOwe, correct: c, ok };
 }
 
 function colorNum(eng: number, cor: number, width: number): string {
   const s = Math.round(eng).toLocaleString().padStart(width);
-  return Math.abs(eng - cor) <= 5 ? `${GRN}${s}${RST}` : `${RED}${s}${RST}`;
+  return eng === cor ? `${GRN}${s}${RST}` : `${RED}${s}${RST}`;
 }
 
 function resultRow(r: CaseResult, idx: number): string {
@@ -208,7 +213,7 @@ write(BOT + "\n");
 const pass = results.filter(r => r.ok).length;
 const fail = results.length - pass;
 
-write(`\n  ${GRN}${pass} PASS${RST}  ${RED}${fail} FAIL${RST}  ${DIM}out of ${results.length} cases  ·  green = within $5${RST}\n\n`);
+write(`\n  ${GRN}${pass} PASS${RST}  ${RED}${fail} FAIL${RST}  ${DIM}out of ${results.length} cases  ·  green = exact${RST}\n\n`);
 
 if (jsonFlag) {
   const failing = results.filter(r => !r.ok).map(r => r.name);

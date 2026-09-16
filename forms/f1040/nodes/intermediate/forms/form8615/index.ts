@@ -9,6 +9,7 @@ import { FilingStatus, filingStatusSchema } from "../../../types.ts";
 import { schedule2 } from "../../aggregation/schedule2/index.ts";
 import type { NodeContext } from "../../../../../../core/types/node-context.ts";
 import { CONFIG_BY_YEAR } from "../../../config/index.ts";
+import { figureTax } from "../../../tax_lookup.ts";
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -61,14 +62,6 @@ function bracketsForStatus(
   return cfg.bracketsSingle;
 }
 
-// Compute regular income tax from a bracket table.
-function taxFromBrackets(income: number, brackets: ReadonlyArray<Bracket>): number {
-  if (income <= 0) return 0;
-  const bracket = [...brackets].reverse().find((b) => income > b.over);
-  if (!bracket) return 0;
-  return bracket.base + (income - bracket.over) * bracket.rate;
-}
-
 // Net unearned income subject to kiddie tax (amounts above threshold).
 // Form 8615 line 6.
 function taxableNUI(nui: number, threshold: number): number {
@@ -85,7 +78,10 @@ function kiddietax(
   brackets: ReadonlyArray<Bracket>,
 ): number {
   if (taxableNui <= 0) return 0;
-  const combinedTax = taxFromBrackets(parentIncome + taxableNui, brackets);
+  // Form 8615 line 9 — "Figure the tax ... using the Tax Table, the Tax Computation
+  // Worksheet, ...". The Tax Computation Worksheet header note names Form 8615 as one of
+  // the forms whose amounts it is used to look up.
+  const combinedTax = figureTax(parentIncome + taxableNui, brackets);
   const incrementalTax = combinedTax - parentTax;
   return Math.max(0, incrementalTax);
 }

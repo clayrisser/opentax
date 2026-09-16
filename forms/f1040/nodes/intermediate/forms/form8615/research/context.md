@@ -26,7 +26,7 @@ Child must be: under 19, OR under 24 and full-time student, AND at least one par
 1. `taxableNUI = max(0, net_unearned_income - $2,600)`
 2. If `taxableNUI = 0` → `{ outputs: [] }`
 3. Select bracket table based on `parent_filing_status`
-4. `combinedTax = taxFromBrackets(parent_income + taxableNUI, brackets)`
+4. `combinedTax = figureTax(parent_income + taxableNUI, brackets)` — Form 8615 line 9 says to use the Tax Table or the Tax Computation Worksheet, whichever applies to that amount
 5. `kiddieTax = max(0, combinedTax - parent_tax)`
 6. Routes to `schedule2.line17d_kiddie_tax`
 
