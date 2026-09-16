@@ -43,11 +43,12 @@ function runReturn(inputs: Record<string, unknown>): ExecuteResult {
 // Single filer, TY2025, W-2 wages $75,000, federal withholding $11,000.
 // No other income, no credits, no adjustments.
 //
-// 2025 Single brackets on $59,250 taxable income:
+// $59,250 is under $100,000, so line 16 comes off the Tax Table. Band 59,250–59,300,
+// looked up at its midpoint of $59,275:
 //   10% × $11,925                       = $1,192.50
 //   12% × ($48,475 − $11,925)           = 12% × $36,550 = $4,386.00
-//   22% × ($59,250 − $48,475)           = 22% × $10,775 = $2,370.50
-//   Total                               = $7,949.00
+//   22% × ($59,275 − $48,475)           = 22% × $10,800 = $2,376.00
+//   Total                               = $7,954.50 → $7,955
 //
 // Expected pipeline:
 //   agi_aggregator.line1a_wages         = $75,000
@@ -56,9 +57,9 @@ function runReturn(inputs: Record<string, unknown>): ExecuteResult {
 //     taxable_income                    = $59,250  (75,000 − 15,750)
 //     filing_status                     = single
 //   f1040 scalars:
-//     line24_total_tax                  = $7,949
-//     line33_total_payments             = $11,000
-//     line35a_refund                    = $3,051
+//     line24_total_tax                  = $7,955
+//     line33_total_payments             = $11,001   ($11,000 withheld + $1 on line 25c)
+//     line35a_refund                    = $3,046
 
 Deno.test("E2E Scenario 1: single W-2 wage earner — wages flow through AGI, standard deduction, tax calculation to final refund", () => {
   const result = runReturn({
@@ -128,23 +129,27 @@ Deno.test("E2E Scenario 1: single W-2 wage earner — wages flow through AGI, st
   // computed totals and are never duplicated by upstream deposits.
   const f1040 = result.pending["f1040"] ?? {};
 
+  // Tax Table band 59,250–59,300, midpoint $59,275:
+  // $5,578.50 + ($59,275 − $48,475) × 22% = $7,954.50 → $7,955
   assertEquals(
     f1040["line24_total_tax"],
-    7_949,
-    "line24_total_tax should be $7,949 (bracket tax, no AMT/other taxes)",
+    7_955,
+    "line24_total_tax should be $7,955 (Tax Table, no AMT/other taxes)",
   );
 
+  // $11,000 withheld plus $1 on line 25c: box 6 is $75,000 × 1.45% = $1,087.50, entered
+  // as $1,088, and Form 8959 line 21 is $1,087.50, so line 22 is $0.50 → $1.
   assertEquals(
     f1040["line33_total_payments"],
-    11_000,
-    "line33_total_payments should be $11,000 (W-2 withholding only)",
+    11_001,
+    "line33_total_payments should be $11,001 (W-2 withholding + line 25c)",
   );
 
-  // Refund = payments − tax = 11,000 − 7,949 = 3,051
+  // Refund = payments − tax = 11,001 − 7,955 = 3,046
   assertEquals(
     f1040["line35a_refund"],
-    3_051,
-    "line35a_refund should be $3,051",
+    3_046,
+    "line35a_refund should be $3,046",
   );
 
   assertEquals(
@@ -210,30 +215,29 @@ Deno.test("E2E Scenario 2: self-employed Schedule C — SE income and SE deducti
     "agi_aggregator should receive line3_schedule_c = $80,000",
   );
 
-  // SE deduction = $80,000 × 0.9235 × 0.153 / 2 = $5,651.82
-  const seDeductionInAgg = agg["line15_se_deduction"] as number;
+  // SE deduction = $80,000 × 0.9235 × 0.153 / 2 = $5,651.82, entered as $5,652
   assertEquals(
-    Math.round(seDeductionInAgg * 100) / 100,
-    5_651.82,
-    "agi_aggregator should receive line15_se_deduction ≈ $5,651.82",
+    agg["line15_se_deduction"],
+    5_652,
+    "agi_aggregator should receive line15_se_deduction = $5,652",
   );
 
   // ── Standard deduction node inputs ────────────────────────────────────────
-  // AGI = 80,000 − 5,651.82 = 74,348.18
+  // AGI = 80,000 − 5,652 = 74,348
   const sdPending = result.pending["standard_deduction"] ?? {};
   assertEquals(
-    Math.round((sdPending["agi"] as number) * 100) / 100,
-    74_348.18,
-    "standard_deduction node should receive agi ≈ $74,348.18",
+    sdPending["agi"],
+    74_348,
+    "standard_deduction node should receive agi = $74,348",
   );
 
   // ── Income tax calculation node inputs ────────────────────────────────────
-  // Taxable income = 74,348.18 − 15,750 (std ded) − 11,719.64 (QBI deduction) = 46,878.54
+  // Taxable income = 74,348 − 15,750 (std ded) − 11,720 (QBI deduction) = 46,878
   const itcPending = result.pending["income_tax_calculation"] ?? {};
   assertEquals(
-    Math.round((itcPending["taxable_income"] as number) * 100) / 100,
-    46_878.54,
-    "income_tax_calculation should receive taxable_income ≈ $46,878.54",
+    itcPending["taxable_income"],
+    46_878,
+    "income_tax_calculation should receive taxable_income = $46,878",
   );
 
   // ── F1040 final scalar summary ─────────────────────────────────────────────
@@ -334,8 +338,9 @@ Deno.test("E2E Scenario 3a: foreign employer compensation with no W-2 — reache
   );
 
   const f1040 = result.pending["f1040"] ?? {};
-  assertEquals(f1040["line24_total_tax"], 425, "total tax = 10% × $4,250");
-  assertEquals(f1040["line37_amount_owed"], 425, "amount owed (no withholding)");
+  // Tax Table band 4,250–4,300, midpoint $4,275: $4,275 × 10% = $427.50 → $428
+  assertEquals(f1040["line24_total_tax"], 428, "total tax, Tax Table on $4,250");
+  assertEquals(f1040["line37_amount_owed"], 428, "amount owed (no withholding)");
 });
 
 Deno.test("E2E Scenario 3b: foreign employer compensation beside a W-2 — both wage sources total on line 1a", () => {
@@ -371,7 +376,9 @@ Deno.test("E2E Scenario 3b: foreign employer compensation beside a W-2 — both 
   );
 
   const f1040 = result.pending["f1040"] ?? {};
-  assertEquals(f1040["line24_total_tax"], 13_449, "total tax on $84,250");
+  // Tax Table band 84,250–84,300, midpoint $84,275:
+  // $5,578.50 + ($84,275 − $48,475) × 22% = $13,454.50 → $13,455
+  assertEquals(f1040["line24_total_tax"], 13_455, "total tax on $84,250");
   assertEquals(f1040["line33_total_payments"], 10_000, "W-2 withholding");
-  assertEquals(f1040["line37_amount_owed"], 3_449, "amount owed = $13,449 − $10,000");
+  assertEquals(f1040["line37_amount_owed"], 3_455, "amount owed = $13,449 − $10,000");
 });
