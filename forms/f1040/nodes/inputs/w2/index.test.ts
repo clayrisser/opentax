@@ -593,3 +593,26 @@ Deno.test("comprehensive_w2_full_workflow: two W-2s with all major boxes populat
   // schedule_a: SDI $400 + state $5,000
   assertEquals(fieldsOf(result.outputs, scheduleA)!.line_5a_state_income_tax, 5400);
 });
+
+// ============================================================
+// Form 8959 line 1 is box 5, never box 1
+// ============================================================
+
+Deno.test("medicare_wages_is_box5_not_box1: box1 $102,200 with box5 $102,000 routes $102,000", () => {
+  // Form 8959 line 1 reads box 5. Box 1 and box 5 part company whenever a deferral or a
+  // pre-tax benefit is treated differently for income tax than for Medicare, and the
+  // form never asks for box 1.
+  const result = compute([
+    minimalItem({ box1_wages: 102_200, box5_medicare_wages: 102_000, box6_medicare_withheld: 1_479 }),
+  ]);
+  assertEquals(fieldsOf(result.outputs, form8959)!.medicare_wages, 102_000);
+});
+
+Deno.test("medicare_wages_falls_back_to_box1: box 6 present with no box 5", () => {
+  // A W-2 that reports withholding but leaves box 5 blank has nothing else to offer, so
+  // box 1 stands in for it.
+  const result = compute([
+    minimalItem({ box1_wages: 80_000, box6_medicare_withheld: 1_160 }),
+  ]);
+  assertEquals(fieldsOf(result.outputs, form8959)!.medicare_wages, 80_000);
+});

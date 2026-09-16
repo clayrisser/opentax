@@ -22,8 +22,12 @@ export const inputSchema = z.object({
   filing_status: z.nativeEnum(FilingStatus),
 
   // Part I: Medicare Wages & Tips
-  // Line 1 — Total Medicare wages and tips (W-2 box 5, all employers)
-  // IRC §3101(b); Form 8959 line 1
+  // Line 1 — "Medicare wages and tips from Form W-2, box 5. If you have more than one
+  // Form W-2, enter the total of the amounts from box 5."
+  // Line 1 is the base for Part I, for the Part II threshold reduction (line 10 reads
+  // line 4, which is line 1 plus tips and Form 8919 wages) and for the Part V regular
+  // Medicare subtraction (line 20 reads line 1). All three are box 5, never box 1.
+  // IRC §3101(b); Form 8959 (2025) lines 1, 10 and 20
   medicare_wages: z.number().nonnegative().optional(),
 
   // Line 2 — Unreported tips from Form 4137 line 6
@@ -51,12 +55,6 @@ export const inputSchema = z.object({
   // Form 8959 line 19
   medicare_withheld: z.number().nonnegative().optional(),
 
-  // Line 20 override wages — W-2 box 5 wages used only for line 20 regular Medicare
-  // computation (line20 = box5 × 1.45%). When present, overrides line4 for line 20.
-  // Required when box5 ≠ box1 (e.g., employer reports higher Medicare wages than
-  // box 1 wages). If absent, falls back to line4 (same as medicare_wages).
-  medicare_wages_box5: z.number().nonnegative().optional(),
-
   // Line 22 — Additional Medicare Tax withheld on RRTA compensation (W-2 box 14)
   // This is already the additional-only portion as reported on W-2 box 14.
   // Form 8959 line 22
@@ -77,14 +75,10 @@ function threshold(status: FilingStatus, cfg: F1040Config): number {
   return cfg.additionalMedicareThresholdOther;
 }
 
-// Part I, Line 4: total Medicare wages + tips (all sources)
-// Form 8959 line 1 = W-2 box 5 (Medicare wages). When medicare_wages_box5 is present
-// (i.e., box5 ≠ box1), use it as the wage base for the threshold comparison.
-// When absent (box5 == box1), fall back to medicare_wages (box1).
+// Part I, Line 4: add lines 1 through 3
 // Form 8959 line 4
 function totalMedicareWages(input: Form8959Input): number {
-  const wageBase = input.medicare_wages_box5 ?? input.medicare_wages ?? 0;
-  return wageBase +
+  return (input.medicare_wages ?? 0) +
     (input.unreported_tips ?? 0) +
     (input.wages_8919 ?? 0);
 }
@@ -146,30 +140,30 @@ function totalAmtTax(p1: number, p2: number, p3: number): number {
   return toCents(p1 + p2 + p3);
 }
 
-// Part V, Line 20: regular Medicare tax on wages = line4 × 1.45%
-// Form 8959 line 20
-function regularMedicareOnWages(line4: number): number {
-  return toCents(line4 * 0.0145);
+// Part V, Line 21: regular Medicare tax withholding on Medicare wages = line20 × 1.45%
+// Form 8959 line 21
+function regularMedicareOnWages(line20: number): number {
+  return toCents(line20 * 0.0145);
 }
 
-// Part V, Line 21: Additional Medicare Tax withheld from W-2 wages
-// = max(0, line19 − line20); isolates the 0.9% additional portion
-// Form 8959 line 21
-// wagesForLine20: use box5 when available (for accurate regular Medicare subtraction),
-// otherwise fall back to line4 (box1-based).
-function additionalMedicareFromWages(medicareWithheld: number, wagesForLine20: number): number {
-  return Math.max(0, medicareWithheld - regularMedicareOnWages(wagesForLine20));
+// Part V, Line 22: Additional Medicare Tax withheld from W-2 wages
+// = max(0, line19 − line21); isolates the 0.9% additional portion
+// Form 8959 line 22
+function additionalMedicareFromWages(medicareWithheld: number, line20: number): number {
+  return Math.max(0, medicareWithheld - regularMedicareOnWages(line20));
 }
 
 // Part V, Line 24: total Additional Medicare Tax withheld
-// = line21 (wages additional) + line22 (RRTA additional)
+// = line22 (wages additional) + line23 (RRTA additional)
 // Form 8959 line 24 → Form 1040 line 25c
-function totalAdditionalWithheld(input: Form8959Input, line4: number): number {
-  // Use box5 wages for line20 when provided; otherwise fall back to line4 (box1-based)
-  const wagesForLine20 = input.medicare_wages_box5 ?? line4;
-  const line21 = additionalMedicareFromWages(input.medicare_withheld ?? 0, wagesForLine20);
-  const line22 = input.rrta_medicare_withheld ?? 0;
-  return toCents(line21 + line22);
+function totalAdditionalWithheld(input: Form8959Input): number {
+  // Line 20 is "Enter the amount from line 1" — box 5 wages alone, not line 4. Tips from
+  // Form 4137 and Form 8919 wages had no Medicare withheld by an employer, so including
+  // them here would subtract withholding that never happened.
+  const line20 = input.medicare_wages ?? 0;
+  const line22 = additionalMedicareFromWages(input.medicare_withheld ?? 0, line20);
+  const line23 = input.rrta_medicare_withheld ?? 0;
+  return toCents(line22 + line23);
 }
 
 // Route total AMT to schedule2 line 11 when > 0
@@ -216,7 +210,7 @@ class Form8959Node extends TaxNode<typeof inputSchema> {
     const line18 = totalAmtTax(line7, line13, line17);
 
     // Part V
-    const line24 = totalAdditionalWithheld(input, line4);
+    const line24 = totalAdditionalWithheld(input);
 
     const outputs: NodeOutput[] = [
       ...schedule2Output(line18),
