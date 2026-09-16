@@ -240,7 +240,6 @@ function deductionOutputs(item: ScheduleCItem, netProfit: number): NodeOutput[] 
   }
   if (!isSeExempt(item) && netProfit >= seThreshold(item)) {
     outputs.push(output(schedule_se, { net_profit_schedule_c: netProfit }));
-    outputs.push(output(form8995, { qbi_from_schedule_c: netProfit }));
   }
   if (item.line_g_material_participation === false) {
     outputs.push(output(form8582, { passive_schedule_c: netProfit }));
@@ -296,6 +295,13 @@ class ScheduleCNode extends TaxNode<typeof inputSchema> {
     const totalNetProfit = netProfits.reduce((sum, p) => sum + p, 0);
     outputs.push(this.outputNodes.output(schedule1, { line3_schedule_c: totalNetProfit }));
     outputs.push(this.outputNodes.output(agi_aggregator, { line3_schedule_c: totalNetProfit }));
+
+    // Form 8995 Line 1(c) carries the net QBI or (loss) of each trade or business and
+    // Line 2 totals them, so a loss in one Schedule C reduces the income from another.
+    // The $400 Schedule SE gate is not a QBI test (i8995, Lines 1 and 2).
+    if (totalNetProfit !== 0) {
+      outputs.push(this.outputNodes.output(form8995, { qbi_from_schedule_c: totalNetProfit }));
+    }
 
     // SE net profit counts as earned income for EITC (IRC §32(c)(2)(A)(ii)) and ACTC
     if (totalNetProfit > 0) {

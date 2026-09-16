@@ -258,9 +258,19 @@ Deno.test("routing_schedule1: SE deduction routes to schedule1 with field line15
   assertEquals(typeof s1!.fields.line15_se_deduction, "number");
 });
 
-Deno.test("routing_exactly_two_outputs: exactly schedule2, schedule1, agi_aggregator, and form8959 for standard case", () => {
+Deno.test("routing_form8995: deductible half of SE tax routes to form8995 as se_tax_deduction", () => {
+  // i8995, Determining Your Qualified Business Income: the items attributable to the trade
+  // or business include the "deductible part of self-employment tax", so Line 13 reduces QBI.
   const result = compute({ net_profit_schedule_c: 10_000 });
-  assertEquals(result.outputs.length, 4);
+  const { seDeduction } = computeExpectedSeTax(10_000);
+  const qbi = findOutput(result, "form8995");
+  assertEquals(qbi !== undefined, true);
+  assertEquals(round2(qbi!.fields.se_tax_deduction as number), round2(seDeduction));
+});
+
+Deno.test("routing_exactly_two_outputs: exactly schedule2, schedule1, agi_aggregator, form8959, and form8995 for standard case", () => {
+  const result = compute({ net_profit_schedule_c: 10_000 });
+  assertEquals(result.outputs.length, 5);
 });
 
 // ── Edge cases ───────────────────────────────────────────────────────────────
@@ -323,5 +333,5 @@ Deno.test("smoke_all_fields: full scenario with C+F profit, tips, 8919, and w2_s
   assertEquals(s1 !== undefined, true);
   assertEquals(round2(s2!.fields.line4_se_tax as number), round2(expectedSeTax));
   assertEquals(round2(s1!.fields.line15_se_deduction as number), round2(expectedDeduction));
-  assertEquals(result.outputs.length, 4);
+  assertEquals(result.outputs.length, 5);
 });
