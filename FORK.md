@@ -2,7 +2,7 @@
 
 `clayrisser/opentax` is a fork of `filedcom/opentax`. It carries six correctness
 patches to the 2025 Form 1040 graph, each of which is also open as a pull
-request upstream.
+request upstream, plus the filing-software convention work described below.
 
 `main` CARRIES the six patches, as of 2026-09-16. A plain clone of this fork
 computes a correct TY2025 return with nothing applied by hand; upstream `main`
@@ -25,6 +25,39 @@ the six merged together and is what `main` took in.
 
 Every pull request is open. When one merges upstream, drop its branch from the
 `fix/all` rebuild below and the fork gets smaller.
+
+## Agreeing with TurboTax and TaxAct to the dollar
+
+`fix/exact-to-filing-software` makes the engine compute what the two filing
+programs compute, and moves the benchmark bar to exact.
+
+- **Every entry is a whole dollar.** `core/money.ts` rounds half up at the
+  executor, on the typed entries going in and on every field a node passes
+  downstream. Instructions for Form 1040 (2025), "Rounding Off to Whole Dollars",
+  p. 23. The instruction's "add in cents and round only the total" refinement is
+  deliberately not followed: TurboTax and TaxAct round each entry as it is typed,
+  and they are the target.
+- **Line 16 comes off the IRS Tax Table below $100,000.** `forms/f1040/nodes/
+  tax_lookup.ts`. The table is generated from the band-midpoint rule, verified
+  against all 2,059 printed bands of Publication 1040 (2025) with zero
+  mismatches, so there is no data file. The Tax Computation Worksheet at or above
+  $100,000 is the bracket table already, row for row. Seven call sites, because
+  the QDCGT worksheet, the Foreign Earned Income Tax Worksheet and Form 8615 each
+  look up their own amount and threshold on it separately.
+- **Form 8959 line 1 is W-2 box 5.** Box 1 appears nowhere on the form; line 10
+  and line 20 both read back to line 1.
+- **The MFS 20% capital gain floor is $300,000**, per QDCGT worksheet line 13.
+
+`deno task bench` compares with `===`. There is no tolerance and there should not
+be one: the $5 it used to carry could not see the $3.50 Tax Table error it was
+sitting on. If a case cannot reach zero, leave it failing and say why.
+
+Re-deriving the 133 benchmark cases under this convention moved 693 expected
+values across 122 of them. Four cases did NOT move, because they were authored
+from the Tax Table and were right while the engine was wrong. 53 expected values
+in those files disagree with the engine for reasons that predate this work, are
+not read by the harness, and were left exactly as found rather than quietly
+overwritten.
 
 ## What it does not fix
 
@@ -50,6 +83,10 @@ six branches' additions, and `deno task bench` stays at 133 PASS with 16 of the
 133 rows moved by a corrected reference. Three test failures are inherited from
 upstream and untouched: `eitc/index.test.ts:296`, `form8889/index.test.ts:41`
 and `:53`.
+
+On top of that, `fix/exact-to-filing-software` takes `deno task test` to 6140
+passing with the same three upstream failures, and `deno task bench` to 133 PASS
+at a tolerance of zero.
 
 ## Rebasing on an upstream release
 
