@@ -28,7 +28,7 @@ Same as Single through $250,525; 35% $250,525–$375,800; 37% over $375,800
 1. Look up `yearBrackets = BRACKETS_BY_YEAR[ctx.taxYear]` — throws if year not found
 2. If `taxable_income = 0` → `{ outputs: [] }`
 3. `brackets = bracketsForStatus(filing_status)` — select table
-4. `tax = taxFromBrackets(income, brackets)` — find highest bracket where `income > b.over`, compute `base + (income - over) × rate`
+4. `tax = figureTax(income, brackets)` — Tax Table below $100,000, Tax Computation Worksheet at or above it. The worksheet is the bracket arithmetic (`base + (income - over) × rate`); the table is that arithmetic at the band midpoint, rounded to a whole dollar
 5. Emit two outputs:
    - `f1040.line16_income_tax: tax`
    - `form6251.{ regular_tax: tax, regular_tax_income: taxable_income, filing_status }`
@@ -40,5 +40,5 @@ Same as Single through $250,525; 35% $250,525–$375,800; 37% over $375,800
 ## Key Design Notes
 - **Phase 1 only**: bracket-table regular tax. QDCG/preferential rates (0%/15%/20%) handled by separate qdcgtw node in Phase 2.
 - QSS uses MFJ brackets.
-- `taxFromBrackets()` uses pre-computed `base` amounts — equivalent to summing tax across all lower brackets.
+- `taxFromBrackets()` uses pre-computed `base` amounts — equivalent to summing tax across all lower brackets, and equal row for row to the printed Tax Computation Worksheet.
 - `ctx.taxYear` is used to look up the year-specific bracket table; throws explicitly if year is missing from `BRACKETS_BY_YEAR`.

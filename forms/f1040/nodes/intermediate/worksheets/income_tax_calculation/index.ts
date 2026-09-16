@@ -10,6 +10,8 @@ import { form_1116 } from "../../forms/form_1116/index.ts";
 import { f8812 } from "../../../inputs/f8812/index.ts";
 import { CONFIG_BY_YEAR } from "../../../config/index.ts";
 import type { Bracket } from "../../../config/2025.ts";
+import { figureTax } from "../../../tax_lookup.ts";
+import { roundToWholeDollars } from "../../../../../../core/money.ts";
 
 // ─── Accumulable helper ───────────────────────────────────────────────────────
 
@@ -81,15 +83,6 @@ function bracketsForStatus(
   return cfg.bracketsSingle;
 }
 
-// Compute tax using the pre-computed base amounts stored in each bracket.
-// Equivalent to summing tax across every rate band the income passes through.
-function taxFromBrackets(income: number, brackets: ReadonlyArray<Bracket>): number {
-  if (income <= 0) return 0;
-  const bracket = [...brackets].reverse().find((b) => income > b.over);
-  if (!bracket) return 0;
-  return bracket.base + (income - bracket.over) * bracket.rate;
-}
-
 // Apply the QDCGT / Schedule D Tax Worksheet (IRC §1(h)).
 //
 // When unrecaptured_1250_gain or rate_28_gain are present, this implements the
@@ -116,7 +109,7 @@ function qdcgtTax(
   rate28Gain: number,
 ): number {
   const prefIncome = Math.min(qualDividends + netCapGain, taxableIncome);
-  if (prefIncome <= 0) return taxFromBrackets(taxableIncome, brackets);
+  if (prefIncome <= 0) return figureTax(taxableIncome, brackets);
 
   const ordinary = taxableIncome - prefIncome;
   const zeroCeilingVal = zeroCeiling[status];
@@ -142,11 +135,20 @@ function qdcgtTax(
   const inFifteen = Math.min(remaining28, availFifteen);
   const inTwenty = remaining28 - inFifteen;
 
-  const prefTax = in25 * 0.25 + in28 * 0.28 + inFifteen * 0.15 + inTwenty * 0.20;
-  const ordinaryTax = taxFromBrackets(ordinary, brackets);
+  // Each rate tier is its own entry space on the worksheet (QDCGT lines 18 and 21;
+  // Schedule D Tax Worksheet lines 34 and 38 for the 25% and 28% tiers), so each is a
+  // whole-dollar figure before they are added.
+  const prefTax = roundToWholeDollars(in25 * 0.25) +
+    roundToWholeDollars(in28 * 0.28) +
+    roundToWholeDollars(inFifteen * 0.15) +
+    roundToWholeDollars(inTwenty * 0.20);
+  // QDCGT line 22 — the tax on ordinary income, looked up on its own amount. It is under
+  // $100,000 on plenty of returns whose taxable income is well over it, which is why this
+  // lookup thresholds separately from the one on the next line.
+  const ordinaryTax = figureTax(ordinary, brackets);
 
-  // Worksheet result is always ≤ regular bracket tax
-  return Math.min(prefTax + ordinaryTax, taxFromBrackets(taxableIncome, brackets));
+  // QDCGT line 24 / line 25 — the worksheet result is always ≤ the tax on all taxable income
+  return Math.min(prefTax + ordinaryTax, figureTax(taxableIncome, brackets));
 }
 
 // ─── Node class ───────────────────────────────────────────────────────────────
@@ -193,16 +195,18 @@ class IncomeTaxCalculationNode extends TaxNode<typeof inputSchema> {
       const stackedIncome = input.taxable_income + floor;
       const stackedTax = hasPrefIncome
         ? qdcgtTax(stackedIncome, qualDiv, netCg, input.filing_status, brackets, cfg.qdcgtZeroCeiling, cfg.qdcgtTwentyFloor, unrecaptured1250, rate28)
-        : taxFromBrackets(stackedIncome, brackets);
-      const floorTax = taxFromBrackets(floor, brackets);
+        : figureTax(stackedIncome, brackets);
+      // Foreign Earned Income Tax Worksheet line 5 thresholds on line 2c, the exclusion,
+      // not on taxable income — another lookup that stands on its own amount.
+      const floorTax = figureTax(floor, brackets);
       tax = Math.max(0, stackedTax - floorTax);
     } else if (hasPrefIncome) {
       tax = qdcgtTax(input.taxable_income, qualDiv, netCg, input.filing_status, brackets, cfg.qdcgtZeroCeiling, cfg.qdcgtTwentyFloor, unrecaptured1250, rate28);
     } else {
-      tax = taxFromBrackets(input.taxable_income, brackets);
+      tax = figureTax(input.taxable_income, brackets);
     }
 
-    const regularTax = taxFromBrackets(input.taxable_income, brackets);
+    const regularTax = figureTax(input.taxable_income, brackets);
 
     const outputs: NodeOutput[] = [
       this.outputNodes.output(f1040, { line16_income_tax: tax }),
