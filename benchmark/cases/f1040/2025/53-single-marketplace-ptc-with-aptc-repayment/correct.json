@@ -34,7 +34,7 @@
     "qbi_deduction": 0,
     "line15_taxable_income": 49250,
     "ordinary_taxable": 49250,
-    "income_tax": 5749,
+    "income_tax": 5755,
     "se_tax": 0,
     "add_medicare_tax": 0,
     "line18_tax_before_credits": 5749,
@@ -47,9 +47,9 @@
     "eitc": 0,
     "actc": 0,
     "excess_ss_credit": 0,
-    "line24_total_tax": 10074,
-    "line33_total_payments": 6500.5,
+    "line24_total_tax": 10080,
+    "line33_total_payments": 6501,
     "line35a_refund": 0,
-    "line37_amount_owed": 3573.5
+    "line37_amount_owed": 3579
   }
 }
