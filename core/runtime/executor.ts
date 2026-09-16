@@ -1,6 +1,7 @@
 import type { NodeRegistry } from "../types/node-registry.ts";
 import type { ExecutionStep } from "./planner.ts";
 import type { NodeContext } from "../types/node-context.ts";
+import { roundFields } from "../money.ts";
 
 export type ExecutorDiagnosticEntry = {
   readonly severity: "error";
@@ -70,7 +71,10 @@ export function execute(
   ctx: NodeContext,
 ): ExecuteResult {
   const pending: Record<string, Record<string, unknown>> = {};
-  pending["start"] = { ...inputs };
+  // Every typed entry is rounded to whole dollars before the graph sees it, and every
+  // field a node passes downstream is rounded again below. That is the TurboTax/TaxAct
+  // convention; core/money.ts carries the rule and the IRS citation.
+  pending["start"] = roundFields(inputs) as Record<string, unknown>;
 
   const diagnostics: ExecutorDiagnosticEntry[] = [];
   const carryforwards: Record<string, number> = {};
@@ -100,7 +104,7 @@ export function execute(
     try {
       const result = node.compute(ctx, parsed.data);
       for (const output of result.outputs) {
-        mergePending(pending, output.nodeType, output.fields);
+        mergePending(pending, output.nodeType, roundFields(output.fields));
       }
       if (result.carryforwards) {
         Object.assign(carryforwards, result.carryforwards);
