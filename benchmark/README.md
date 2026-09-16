@@ -1,7 +1,7 @@
 # benchmark
 
 Accuracy benchmark for the `tax` engine — 133 TY2025 scenarios with IRS-authoritative
-correct values. Passes when every engine output is within $5 of the correct value for
+correct values. Passes when every engine output equals the correct value exactly for
 total tax, refund, and amount owed.
 
 For folder layout and file formats, see [STRUCTURE.md](../docs/architecture/STRUCTURE.md).
@@ -18,7 +18,7 @@ For folder layout and file formats, see [STRUCTURE.md](../docs/architecture/STRU
 | 21–31 | Mixed | Additional Medicare Tax, ACTC, LTCG 0% bracket, blind filer, senior + SE income |
 | 32–97 | Extended | Schedule C loss, 1099-R, AOTC, marketplace/1095-A, educator expense, estimated tax, EITC no children, 401(k), tips, QBI, K-1, SSA, NIIT, multiple 1099-R |
 
-**Pass criteria:** engine value within $5 of the correct value for:
+**Pass criteria:** engine value equal to the correct value, to the dollar, for:
 - `line24_total_tax`
 - `line35a_refund`
 - `line37_amount_owed`
