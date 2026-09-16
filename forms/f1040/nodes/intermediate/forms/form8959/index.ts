@@ -15,6 +15,15 @@ import { CONFIG_BY_YEAR, type F1040Config } from "../../../config/index.ts";
 // IRC §3101(b)(2); Form 8959 line 7 — Additional Medicare Tax rate
 const AMT_RATE = 0.009;
 
+// The wage figure at which an employer starts withholding Additional Medicare Tax, and
+// the figure the first two "Who Must File" bullets are measured against. Instructions
+// for Form 8959 (2025): "Your employer must withhold Additional Medicare Tax on wages it
+// pays to you in excess of $200,000 for the calendar year, regardless of your filing
+// status and regardless of wages or compensation paid by another employer." IRC
+// §3102(f)(1). It is a fixed statutory figure and is not the filing-status threshold —
+// an MFS filer's threshold is $125,000 but their employer still starts at $200,000.
+const EMPLOYER_WITHHOLDING_THRESHOLD = 200_000;
+
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
 export const inputSchema = z.object({
@@ -29,6 +38,14 @@ export const inputSchema = z.object({
   // Medicare subtraction (line 20 reads line 1). All three are box 5, never box 1.
   // IRC §3101(b); Form 8959 (2025) lines 1, 10 and 20
   medicare_wages: z.number().nonnegative().optional(),
+
+  // Box 5 of the single largest Form W-2, which is what the first "Who Must File"
+  // bullet is measured against — "your Medicare wages and tips on any single Form W-2
+  // (box 5) are greater than $200,000". It is not a line on the form; it is the only
+  // way to tell an MFJ couple at $210,000 + $30,000, who must file because one employer
+  // withheld Additional Medicare Tax, from one at $120,000 + $120,000, who need not.
+  // An array arrives when more than one node deposits it (a W-2 plus a Form 4852).
+  highest_single_medicare_wages: z.union([z.number(), z.array(z.number())]).optional(),
 
   // Line 2 — Unreported tips from Form 4137 line 6
   // Form 8959 line 2
@@ -73,6 +90,54 @@ function threshold(status: FilingStatus, cfg: F1040Config): number {
   if (status === FilingStatus.QSS) return cfg.additionalMedicareThresholdMfj;
   if (status === FilingStatus.MFS) return cfg.additionalMedicareThresholdMfs;
   return cfg.additionalMedicareThresholdOther;
+}
+
+// Largest of a field that one or more upstream nodes may have deposited.
+function largest(value: number | readonly number[] | undefined): number {
+  if (value === undefined) return 0;
+  if (Array.isArray(value)) return value.reduce((m, x) => Math.max(m, x), 0);
+  return value as number;
+}
+
+// Whether Form 8959 is filed at all.
+//
+// Instructions for Form 8959 (2025), "Who Must File" — "You must file Form 8959 if one
+// or more of the following applies to you.
+//   • Your Medicare wages and tips on any single Form W-2 (box 5) are greater than
+//     $200,000.
+//   • Your RRTA compensation on any single Form W-2 (box 14) is greater than $200,000.
+//   • Your total Medicare wages and tips plus your self-employment income, if any, and
+//     your spouse's Medicare wages and tips and self-employment income, if married
+//     filing jointly, are greater than the threshold amount for your filing status ...
+//   • Your total RRTA compensation and tips (Form W-2, box 14) and your spouse's RRTA
+//     compensation and tips, if married filing jointly, are greater than the threshold
+//     amount for your filing status ..."
+//
+// Meeting none of them means no Form 8959, and therefore nothing on Schedule 2 line 11
+// and nothing on Form 1040 line 25c: the line 24 instruction is "include this amount on
+// line 25c combined with your federal income tax withholding. Attach your completed
+// Form 8959 to Form 1040".
+//
+// This gate is what keeps Part V honest. Line 22 is line 19 minus 1.45% of line 20, so
+// on a return with no Additional Medicare Tax anywhere it hands back whatever the
+// employer's own rounding left in box 6 — half a dollar on a $65,000 wage — as if it
+// were Additional Medicare Tax withholding. Over-withheld *ordinary* Medicare tax is
+// not creditable on Form 1040: §6413(c) gives a special refund for over-withheld social
+// security tax and has no Medicare counterpart, so the remedy is the employer or
+// Form 843.
+function mustFileForm8959(input: Form8959Input, line4: number, limit: number): boolean {
+  // rrta_wages is a total with no per-form breakdown anywhere in the graph, so the
+  // second bullet is measured against that total. It can only ever be generous.
+  const rrta = input.rrta_wages ?? 0;
+  return largest(input.highest_single_medicare_wages) > EMPLOYER_WITHHOLDING_THRESHOLD ||
+    rrta > EMPLOYER_WITHHOLDING_THRESHOLD ||
+    line4 + Math.max(0, input.se_income ?? 0) > limit ||
+    rrta > limit ||
+    // Box 14 reports Additional Medicare Tax on its own, already net of the ordinary
+    // rate, and a railroad employer withholds it only above $200,000 (IRC §3202(a)). So
+    // an amount there is itself evidence of the filing requirement, in a way that box 6
+    // — which carries both rates in one figure — never is.
+    (input.rrta_medicare_withheld ?? 0) > 0;
 }
 
 // Part I, Line 4: add lines 1 through 3
@@ -194,6 +259,9 @@ class Form8959Node extends TaxNode<typeof inputSchema> {
 
     // Part I
     const line4 = totalMedicareWages(input);
+
+    if (!mustFileForm8959(input, line4, limit)) return { outputs: [] };
+
     const line6 = medicareWageExcess(line4, limit);
     const line7 = partITax(line6);
 

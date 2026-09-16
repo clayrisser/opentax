@@ -108,11 +108,12 @@ function w2Item(wages: number, withheld: number) {
 // AGI: $75,000  |  Std ded: $15,750  |  Taxable: $59,250
 // Tax, Tax Table band 59,250–59,300, midpoint $59,275:
 //   $5,578.50 + ($59,275 − $48,475) × 0.22 = $7,954.50 → $7,955
-// Payments: $11,000 withheld + $1 on line 25c (box 6 $1,087.50 → $1,088, less
-//   Form 8959 line 21 of $1,087.50, is $0.50 → $1) = $11,001
-// Refund: $11,001 − $7,955 = $3,046
+// Payments: $11,000 withheld. Box 5 of $75,000 clears no Form 8959 filing trigger, so
+//   no Form 8959 is filed and line 25c is empty — the half dollar the employer rounded
+//   up on box 6 is over-withheld ordinary Medicare tax, not a credit.
+// Refund: $11,000 − $7,955 = $3,045
 
-Deno.test("Scenario 1: Single, W-2 $75K — refund $3,046", () => {
+Deno.test("Scenario 1: Single, W-2 $75K — refund $3,045", () => {
   const result = runReturn({
     general: singleGeneral(),
     w2: [w2Item(75_000, 11_000)],
@@ -131,8 +132,8 @@ Deno.test("Scenario 1: Single, W-2 $75K — refund $3,046", () => {
   // F1040 scalar summary
   const f = result.pending["f1040"] ?? {};
   assertEquals(f["line24_total_tax"], 7_955, "total tax");
-  assertEquals(f["line33_total_payments"], 11_001, "total payments");
-  assertEquals(f["line35a_refund"], 3_046, "refund");
+  assertEquals(f["line33_total_payments"], 11_000, "total payments");
+  assertEquals(f["line35a_refund"], 3_045, "refund");
   assertEquals(f["line37_amount_owed"], undefined, "no amount owed");
 });
 
@@ -169,12 +170,13 @@ Deno.test("Scenario 2: MFJ, W-2 $120K — refund $2,854", () => {
 // AGI: $150,000  |  Std ded: $31,500  |  Taxable: $118,500
 // Over $100,000, so the Tax Computation Worksheet, Section B 22% row:
 //   0.22 × $118,500 − $10,172 = $15,898
-// Payments: $18,000 withheld + $1 on line 25c. Two W-2s, box 6 of $1,232.50 and
-//   $942.50 entered as $1,233 and $943 = $2,176, against Form 8959 line 21 of
-//   $2,175 on $150,000 of box 5 wages.
-// Refund: $18,001 − $15,898 = $2,103
+// Payments: $18,000 withheld. Neither W-2 has box 5 over $200,000 and the combined
+//   $150,000 is under the $250,000 MFJ threshold, so no Form 8959 is filed. The $1 by
+//   which the two rounded box 6 figures ($1,233 + $943 = $2,176) exceed 1.45% of
+//   $150,000 is the employers' rounding, not Additional Medicare Tax withholding.
+// Refund: $18,000 − $15,898 = $2,102
 
-Deno.test("Scenario 3: MFJ, dual W-2s $150K — refund $2,103", () => {
+Deno.test("Scenario 3: MFJ, dual W-2s $150K — refund $2,102", () => {
   const result = runReturn({
     general: mfjGeneral(),
     w2: [
@@ -194,8 +196,8 @@ Deno.test("Scenario 3: MFJ, dual W-2s $150K — refund $2,103", () => {
 
   const f = result.pending["f1040"] ?? {};
   assertEquals(f["line24_total_tax"], 15_898, "total tax");
-  assertEquals(f["line33_total_payments"], 18_001, "total payments");
-  assertEquals(f["line35a_refund"], 2_103, "refund");
+  assertEquals(f["line33_total_payments"], 18_000, "total payments");
+  assertEquals(f["line35a_refund"], 2_102, "refund");
   assertEquals(f["line37_amount_owed"], undefined, "no amount owed");
 });
 
@@ -205,11 +207,10 @@ Deno.test("Scenario 3: MFJ, dual W-2s $150K — refund $2,103", () => {
 // AGI: $66,200  |  Std ded: $15,750  |  Taxable: $50,450
 // Tax, Tax Table band 50,450–50,500, midpoint $50,475:
 //   $5,578.50 + ($50,475 − $48,475) × 0.22 = $6,018.50 → $6,019
-// Payments: $8,000 withheld + $1 on line 25c (box 6 $942.50 → $943, less
-//   Form 8959 line 21 of $942.50, is $0.50 → $1) = $8,001
-// Refund: $8,001 − $6,019 = $1,982
+// Payments: $8,000 withheld. Box 5 of $65,000 files no Form 8959, so line 25c is empty.
+// Refund: $8,000 − $6,019 = $1,981
 
-Deno.test("Scenario 4: Single, W-2 + interest — refund $1,982", () => {
+Deno.test("Scenario 4: Single, W-2 + interest — refund $1,981", () => {
   const result = runReturn({
     general: singleGeneral(),
     w2: [w2Item(65_000, 8_000)],
@@ -229,8 +230,8 @@ Deno.test("Scenario 4: Single, W-2 + interest — refund $1,982", () => {
 
   const f = result.pending["f1040"] ?? {};
   assertEquals(f["line24_total_tax"], 6_019, "total tax");
-  assertEquals(f["line33_total_payments"], 8_001, "total payments");
-  assertEquals(f["line35a_refund"], 1_982, "refund");
+  assertEquals(f["line33_total_payments"], 8_000, "total payments");
+  assertEquals(f["line35a_refund"], 1_981, "refund");
 });
 
 // ── Scenario 5: Single, W-2 $70K + qualified dividends ──────────────────────
@@ -639,12 +640,12 @@ Deno.test("Scenario 13: HOH, EITC + CTC 2 qualifying children $32K — refund $1
 //   line19 = 0, line20 (nonrefundable CTC via Schedule 3) = $5,946
 //   line22 = max(0, $5,946 − $5,946) = $0
 //   line24 (total tax) = $0
-//   line25c = $1 (box 6 $1,232.50 → $1,233, less Form 8959 line 21 of $1,232.50)
+//   line25c = absent — $85,000 of box 5 wages files no Form 8959
 //   line28 (ACTC) = $654
-//   Total payments = $8,000 + $1 + $654 = $8,655
-//   Refund = $8,655 − $0 = $8,655
+//   Total payments = $8,000 + $654 = $8,654
+//   Refund = $8,654 − $0 = $8,654
 
-Deno.test("Scenario 14: MFJ, CTC + ACTC, 3 children, $85K — refund $8,655", () => {
+Deno.test("Scenario 14: MFJ, CTC + ACTC, 3 children, $85K — refund $8,654", () => {
   const result = runReturn({
     general: {
       ...mfjGeneral(),
@@ -705,8 +706,8 @@ Deno.test("Scenario 14: MFJ, CTC + ACTC, 3 children, $85K — refund $8,655", ()
   // ACTC = 3 × $2,200 CTC − $5,946 nonrefundable = $654
   // Line 25c: box 6 is $85,000 × 1.45% = $1,232.50, entered as $1,233; Form 8959 line 21
   // is $1,232.50, so line 22 is $0.50, entered as $1.
-  assertEquals(f["line33_total_payments"], 8_655, "total payments = $8,655");
-  assertEquals(f["line35a_refund"], 8_655, "refund = $8,655");
+  assertEquals(f["line33_total_payments"], 8_654, "total payments = $8,654");
+  assertEquals(f["line35a_refund"], 8_654, "refund = $8,654");
   assertEquals(f["line37_amount_owed"], undefined, "no amount owed");
 });
 

@@ -340,16 +340,113 @@ Deno.test("part V: line 20 is line 1, so tips and Form 8919 wages stay out of it
   // Line 20 reads line 1, not line 4. Form 4137 tips and Form 8919 wages had no employer
   // Medicare withholding behind them, so counting them here would subtract withholding
   // that never happened and wipe out a real line 25c credit.
-  // line 20 = $100,000; line 21 = $1,450; line 19 = $2,000 → line 22 = $550
+  // line 4 = $240,000; line 20 = line 1 = $210,000; line 21 = $3,045;
+  // line 19 = $4,000 → line 22 = $955. Reading line 4 there instead would give $520.
   const result = compute({
     filing_status: FilingStatus.Single,
-    medicare_wages: 100_000,
+    medicare_wages: 210_000,
+    highest_single_medicare_wages: 210_000,
     unreported_tips: 20_000,
     wages_8919: 10_000,
-    medicare_withheld: 2_000,
+    medicare_withheld: 4_000,
   });
   assertEquals(
     fieldsOf(result.outputs, f1040)!.line25c_additional_medicare_withheld,
-    550,
+    955,
+  );
+});
+
+// ─── Who Must File ─────────────────────────────────────────────────────────────
+//
+// Form 8959 is filed only when one of the four "Who Must File" bullets applies, and
+// Form 1040 line 25c carries Form 8959 line 24 only when there is a Form 8959. Part V
+// subtracts 1.45% of line 20 from box 6, so on a return that files no Form 8959 it
+// would otherwise hand back the employer's own rounding of the ordinary Medicare tax
+// as if it were Additional Medicare Tax withholding.
+
+Deno.test("who must file: box 6 rounded up on ordinary wages is not a line 25c credit", () => {
+  // $65,000 of box 5. Ordinary Medicare tax is $942.50, and an employer that rounds box 6
+  // to $943 leaves $0.50. No filing trigger applies, so there is no Form 8959 and no
+  // line 25c. Over-withheld ordinary Medicare tax is recovered from the employer or on
+  // Form 843, never here — §6413(c)'s special refund is for social security tax only.
+  const result = compute({
+    filing_status: FilingStatus.Single,
+    medicare_wages: 65_000,
+    highest_single_medicare_wages: 65_000,
+    medicare_withheld: 943,
+  });
+  assertEquals(result.outputs.length, 0);
+});
+
+Deno.test("who must file: one W-2 over $200,000 files, even under the MFJ threshold", () => {
+  // MFJ at $210,000 + $30,000 = $240,000, under the $250,000 threshold, so no Additional
+  // Medicare Tax is owed. But one employer paid over $200,000 and was required to
+  // withhold it, so the form is filed and Part V returns it:
+  // line 20 = $240,000; line 21 = $3,480; line 19 = $3,570 → line 22 = $90.
+  const result = compute({
+    filing_status: FilingStatus.MFJ,
+    medicare_wages: 240_000,
+    highest_single_medicare_wages: 210_000,
+    medicare_withheld: 3_570,
+  });
+  assertEquals(findOutput(result, "schedule2"), undefined);
+  assertEquals(
+    fieldsOf(result.outputs, f1040)!.line25c_additional_medicare_withheld,
+    90,
+  );
+});
+
+Deno.test("who must file: the same couple split evenly files nothing", () => {
+  // $120,000 + $120,000. Same $240,000, same box 6, but neither employer crossed
+  // $200,000, so no Additional Medicare Tax was withheld and no form is filed.
+  const result = compute({
+    filing_status: FilingStatus.MFJ,
+    medicare_wages: 240_000,
+    highest_single_medicare_wages: 120_000,
+    medicare_withheld: 3_570,
+  });
+  assertEquals(result.outputs.length, 0);
+});
+
+Deno.test("who must file: wages plus self-employment income over the threshold", () => {
+  // Instructions Example 3: $130,000 of wages and $145,000 of self-employment income.
+  // Neither alone crosses $200,000; together they do, so Carl must file.
+  const result = compute({
+    filing_status: FilingStatus.Single,
+    medicare_wages: 130_000,
+    highest_single_medicare_wages: 130_000,
+    se_income: 145_000,
+  });
+  // line 10 = $130,000; line 11 = $70,000; line 12 = $75,000; line 13 = $675
+  assertEquals(
+    fieldsOf(result.outputs, schedule2)!.line11_additional_medicare,
+    675,
+  );
+});
+
+Deno.test("who must file: an SE loss does not drag a wage-only return into the form", () => {
+  // "A self-employment loss shouldn't be considered for purposes of this tax."
+  const result = compute({
+    filing_status: FilingStatus.Single,
+    medicare_wages: 150_000,
+    highest_single_medicare_wages: 150_000,
+    medicare_withheld: 2_176,
+    se_income: -20_000,
+  });
+  assertEquals(result.outputs.length, 0);
+});
+
+Deno.test("who must file: box 14 RRTA withholding is filed on its own", () => {
+  // Line 23 takes box 14 straight through with no ordinary-rate subtraction, because a
+  // railroad employer reports Additional Medicare Tax there separately and withholds it
+  // only above $200,000. Its presence is therefore evidence of the filing requirement,
+  // in a way box 6 — which carries both rates in one figure — never is.
+  const result = compute({
+    filing_status: FilingStatus.Single,
+    rrta_medicare_withheld: 135,
+  });
+  assertEquals(
+    fieldsOf(result.outputs, f1040)!.line25c_additional_medicare_withheld,
+    135,
   );
 });

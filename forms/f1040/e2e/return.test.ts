@@ -58,8 +58,8 @@ function runReturn(inputs: Record<string, unknown>): ExecuteResult {
 //     filing_status                     = single
 //   f1040 scalars:
 //     line24_total_tax                  = $7,955
-//     line33_total_payments             = $11,001   ($11,000 withheld + $1 on line 25c)
-//     line35a_refund                    = $3,046
+//     line33_total_payments             = $11,000
+//     line35a_refund                    = $3,045
 
 Deno.test("E2E Scenario 1: single W-2 wage earner — wages flow through AGI, standard deduction, tax calculation to final refund", () => {
   const result = runReturn({
@@ -137,19 +137,21 @@ Deno.test("E2E Scenario 1: single W-2 wage earner — wages flow through AGI, st
     "line24_total_tax should be $7,955 (Tax Table, no AMT/other taxes)",
   );
 
-  // $11,000 withheld plus $1 on line 25c: box 6 is $75,000 × 1.45% = $1,087.50, entered
-  // as $1,088, and Form 8959 line 21 is $1,087.50, so line 22 is $0.50 → $1.
+  // $11,000 of W-2 withholding and nothing else. Box 6 is $75,000 × 1.45% = $1,087.50,
+  // which is entered as $1,088, but box 5 of $75,000 is under every Form 8959 filing
+  // trigger, so no Form 8959 is filed and line 25c stays empty. The half dollar the
+  // employer rounded up is over-withheld ordinary Medicare tax, not a credit.
   assertEquals(
     f1040["line33_total_payments"],
-    11_001,
-    "line33_total_payments should be $11,001 (W-2 withholding + line 25c)",
+    11_000,
+    "line33_total_payments should be $11,000 (W-2 withholding only)",
   );
 
-  // Refund = payments − tax = 11,001 − 7,955 = 3,046
+  // Refund = payments − tax = 11,000 − 7,955 = 3,045
   assertEquals(
     f1040["line35a_refund"],
-    3_046,
-    "line35a_refund should be $3,046",
+    3_045,
+    "line35a_refund should be $3,045",
   );
 
   assertEquals(

@@ -173,10 +173,15 @@ function ficaOutputs(items: F4852Items): NodeOutput[] {
       item.medicare_wages !== undefined || item.medicare_withheld !== undefined,
   );
   if (w2s.length === 0) return [];
-  const totalMedicareWages = w2s.reduce((sum, item) => sum + (item.medicare_wages ?? 0), 0);
+  const perForm = w2s.map((item) => item.medicare_wages ?? 0);
+  const totalMedicareWages = perForm.reduce((sum, wages) => sum + wages, 0);
+  // A Form 4852 stands in for a Form W-2, so it counts for Form 8959's per-form filing
+  // requirement the same way box 5 does.
+  const highestSingle = perForm.reduce((m, wages) => Math.max(m, wages), 0);
   const totalMedicareWithheld = w2s.reduce((sum, item) => sum + (item.medicare_withheld ?? 0), 0);
   const fields: Partial<z.infer<typeof form8959["inputSchema"]>> = {};
   if (totalMedicareWages > 0) fields.medicare_wages = totalMedicareWages;
+  if (highestSingle > 0) fields.highest_single_medicare_wages = highestSingle;
   if (totalMedicareWithheld > 0) fields.medicare_withheld = totalMedicareWithheld;
   if (Object.keys(fields).length === 0) return [];
   return [output(form8959, fields as AtLeastOne<z.infer<typeof form8959["inputSchema"]>>)];

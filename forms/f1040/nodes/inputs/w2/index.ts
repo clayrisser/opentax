@@ -224,13 +224,16 @@ function medicareOutput(w2s: W2Items): NodeOutput[] {
   // it: line 1 feeds Part I, the line 10 threshold reduction and the line 20 regular
   // Medicare subtraction alike. A W-2 with box 6 filled but box 5 left blank falls back
   // to box 1, which is the closest thing the form has.
-  const totalMedicareWages = items.reduce(
-    (sum, item) => sum + (item.box5_medicare_wages ?? item.box1_wages),
-    0,
-  );
+  const perW2 = items.map((item) => item.box5_medicare_wages ?? item.box1_wages);
+  const totalMedicareWages = perW2.reduce((sum, wages) => sum + wages, 0);
+  // Box 5 of the single largest W-2. Form 8959's filing requirement is partly per-form
+  // ("your Medicare wages and tips on any single Form W-2 (box 5) are greater than
+  // $200,000"), and the total alone cannot answer that.
+  const highestSingle = perW2.reduce((m, wages) => Math.max(m, wages), 0);
   const totalWithheld = items.reduce((sum, item) => sum + (item.box6_medicare_withheld ?? 0), 0);
   const fields: Partial<z.infer<typeof form8959["inputSchema"]>> = {};
   if (totalMedicareWages > 0) fields.medicare_wages = totalMedicareWages;
+  if (highestSingle > 0) fields.highest_single_medicare_wages = highestSingle;
   if (totalWithheld > 0) fields.medicare_withheld = totalWithheld;
   if (Object.keys(fields).length === 0) return [];
   return [output(form8959, fields as AtLeastOne<z.infer<typeof form8959["inputSchema"]>>)];

@@ -46,18 +46,37 @@ programs compute, and moves the benchmark bar to exact.
   look up their own amount and threshold on it separately.
 - **Form 8959 line 1 is W-2 box 5.** Box 1 appears nowhere on the form; line 10
   and line 20 both read back to line 1.
+- **Form 8959 is filed only when one of the four "Who Must File" bullets
+  applies**, and Form 1040 line 25c carries Form 8959 line 24 only when there is
+  a Form 8959. Part V subtracts 1.45% of line 20 from box 6, so without that gate
+  it hands back the employer's own rounding of the ordinary Medicare tax as if it
+  were Additional Medicare Tax withholding — half a dollar on a $65,000 wage,
+  which the whole-dollar convention then rounds up to a dollar. Over-withheld
+  ordinary Medicare tax is not creditable on Form 1040: §6413(c)'s special refund
+  covers social security tax and has no Medicare counterpart, so the remedy is the
+  employer or Form 843. The per-form bullet needs box 5 of the largest single
+  W-2, which is why `highest_single_medicare_wages` exists.
 - **The MFS 20% capital gain floor is $300,000**, per QDCGT worksheet line 13.
 
 `deno task bench` compares with `===`. There is no tolerance and there should not
 be one: the $5 it used to carry could not see the $3.50 Tax Table error it was
 sitting on. If a case cannot reach zero, leave it failing and say why.
 
-Re-deriving the 133 benchmark cases under this convention moved 693 expected
-values across 122 of them. Four cases did NOT move, because they were authored
+Re-deriving the 133 benchmark cases under this convention moved 668 expected
+values across 120 of them. Four cases did NOT move, because they were authored
 from the Tax Table and were right while the engine was wrong. 53 expected values
 in those files disagree with the engine for reasons that predate this work, are
 not read by the harness, and were left exactly as found rather than quietly
 overwritten.
+
+Thirty-four of those cases carried a phantom Form 8959 line 25c credit. Thirty
+had their `line33_total_payments` moved up a dollar to meet it before the filing
+requirement was in place; they are back at round-half-up of the figure they had
+on `main`. The other four (`53`, `133`, `61`, `82`) already carried the credit on
+`main` — fifty cents on two of them and $791.87 on the other two — and are now
+the figure less that credit. Those four fixtures agree with the `main` engine to
+floating-point noise on every field the harness reads, so they were engine output
+transcribed, not an independent check.
 
 ## What it does not fix
 
