@@ -277,3 +277,27 @@ Deno.test("form_1116: zero taxable income routes a zero limitation base", () => 
   const result = compute({ taxable_income: 0, filing_status: FilingStatus.Single });
   assertEquals(fieldsOf(result.outputs, form_1116)?.us_tax_before_credits, 0);
 });
+
+// ─── QDCGT line 13 — the 20% floor by filing status ──────────────────────────
+//
+// Qualified Dividends and Capital Gain Tax Worksheet line 13 (2025) prints
+// "$300,000 if married filing separately" next to "$600,050 if married filing jointly".
+// MFS is not half the MFJ figure: Rev. Proc. 2024-40 §3.02 rounds each status's maximum
+// 15-percent rate amount on its own.
+
+Deno.test("QDCGT: the MFS 20% floor is $300,000, not half of the MFJ $600,050", () => {
+  // $310,000 taxable, all of it long-term gain. Ordinary income is zero, so the whole
+  // gain stacks from the bottom: $48,350 at 0%, then the 15% band up to $300,000, then
+  // the rest at 20%.
+  //   0% on $48,350; 15% on $300,000 − $48,350 = $251,650 → $37,747.50 → $37,748
+  //   20% on $310,000 − $300,000 = $10,000 → $2,000
+  //   total $39,748
+  // With the floor one dollar higher at $300,025 the split would move $25 from the 20%
+  // band to the 15% band and the tax would be $1.25 lower.
+  const result = compute({
+    taxable_income: 310_000,
+    filing_status: FilingStatus.MFS,
+    net_capital_gain: 310_000,
+  });
+  assertEquals(f1040Fields(result)?.line16_income_tax as number, 39_748);
+});
